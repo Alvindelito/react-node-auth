@@ -2,25 +2,38 @@ const express = require('express');
 const app = express();
 const path = require('path');
 const db = require('./database/index');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 app.use(express.json());
 
 app.get('/users/login', (req, res) => {
-  const queryStr = `SELECT * FROM users WHERE email='${req.body.email}' AND password='${req.body.password}'`;
-  db.query(queryStr, (err, result) => {
-    if (err) res.status(400).json();
-    else if (result.length < 1) res.status(401).send('-1');
-    else res.status(200).send(result);
+  const plainTextPassword = req.body.password;
+
+  const queryStr = `SELECT password FROM users WHERE email='${req.body.email}'`;
+  db.query(queryStr, (queryErr, queryResult) => {
+    if (queryErr) res.status(400).send(queryErr);
+    else if (queryResult.length < 1) res.status(401).send('-1');
+    else {
+      bcrypt.compare(plainTextPassword, queryResult[0].password, (err, result) => {
+        if (err) res.status(400).send(err);
+        else res.status(201).send(result);
+      })
+    }
   })
 })
 
+// encrypt plaintext password into a hash and store into db
 app.post('/users/register', (req, res) => {
-  const queryStr = `INSERT INTO users (email, password) VALUES ('${req.body.email}', '${req.body.password}')`;
-  db.query(queryStr, (err, result) => {
-    if (err) res.status(400).send(err);
-    else res.status(201).send('successfully registered');
-  })
-  db.end();
+  const plainTextPassword = req.body.password;
+
+  bcrypt.hash(plainTextPassword, saltRounds, (err, hash) => {
+    const queryStr = `INSERT INTO users (email, password) VALUES ('${req.body.email}', '${hash}')`;
+    db.query(queryStr, (err, result) => {
+      if (err) res.status(400).send(err);
+      else res.status(201).send('successfully registered');
+    });
+  });
 })
 
 app.use('/', express.static(path.join(__dirname, 'dist')));
